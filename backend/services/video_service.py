@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 
 from ..app import db
 from ..models import Video, ResolutionPreset, BitratePreset, AudioBitratePreset, CRFPreset, Preset
-from ..queues import get_redis_connection
+from ..queues import get_redis_connection, get_queues
 from .. import config
 
 def _parse_params(raw: str | None) -> Dict[str, Any]:
@@ -94,8 +94,17 @@ def create_videos_from_request(request: Request) -> List[dict]:
                 **video.to_dict(),
             }
         )
+        enqueue_processing_jobs(file_uid, ext, params)
 
     return created
+
+def enqueue_processing_jobs(file_uid: str, ext: str, params: dict):
+    conn = get_redis_connection()
+    queues = get_queues(conn)
+    from ..tasks.video_tasks import chunk_video_task, process_video_task
+
+    queues["chunking"].enqueue(chunk_video_task, file_uid, ext, params)
+    queues["processing"].enqueue(process_video_task, file_uid, params)
 
 def list_videos() -> list[dict]:
     videos = Video.query.all()
