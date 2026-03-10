@@ -1,0 +1,43 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7
+    container_name: clipcrunch-redis
+    ports:
+      - "6379:6379"
+
+  web:
+    build: .
+    container_name: clipcrunch-web
+    command: flask run --host=0.0.0.0 --port=5000
+    environment:
+      - FLASK_APP=backend.app:create_app
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CLIPCRUNCH_DATA_DIR=/app/data
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    volumes:
+      - clipcrunch-data:/app/data
+
+  worker:
+    build: .
+    container_name: clipcrunch-worker
+    command: rq worker chunking_jobs processing_jobs assembly_jobs
+    environment:
+      - FLASK_APP=backend.app:create_app
+      - FLASK_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CLIPCRUNCH_DATA_DIR=/app/data
+    depends_on:
+      - redis
+    volumes:
+      - clipcrunch-data:/app/data
+
+volumes:
+  clipcrunch-data:

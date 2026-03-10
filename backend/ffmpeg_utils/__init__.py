@@ -1,9 +1,12 @@
 import os
 import subprocess
 from typing import List
+from .. import config
 
-CHUNKS_DIR = "video_chunks"
-PROCESSED_DIR = "processed_chunks"
+DATA_DIR = config.DATA_DIR
+CHUNKS_DIR = os.path.join(DATA_DIR, "video_chunks")
+PROCESSED_DIR = os.path.join(DATA_DIR, "processed_chunks")
+OUTPUT_DIR = os.path.join(DATA_DIR, "outputs")
 
 def ensure_dir(directory: str) -> None:
     os.makedirs(directory, exist_ok=True)
@@ -56,6 +59,7 @@ def reassemble_video(chunk_paths: list[str], output_path: str):
     from ffmpeg import input as ffmpeg_input
 
     ensure_dir(PROCESSED_DIR)
+    ensure_dir(os.path.dirname(output_path))
     concat_list = os.path.join(PROCESSED_DIR, "concat_list.txt")
 
     with open(concat_list, "w") as f:

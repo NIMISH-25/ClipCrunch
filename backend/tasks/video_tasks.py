@@ -6,6 +6,8 @@ from redis import Redis
 from ..ffmpeg_utils import split_video, process_chunk, reassemble_video, CHUNKS_DIR, PROCESSED_DIR
 from ..models import ResolutionPreset, BitratePreset, AudioBitratePreset
 from ..queues import get_redis_connection
+from ..ffmpeg_utils import OUTPUT_DIR
+from ..config import TEMP_UPLOAD_FOLDER
 
 TARGET_CHUNK_SIZE_BYTES = 4 * 1024 * 1024  # 4MB
 
@@ -17,7 +19,7 @@ def chunk_video_task(file_uid: str, ext: str, params: Dict[str, Any]):
     redis_conn = get_redis_connection()
     _update_status(redis_conn, file_uid, status="chunking", progress=5)
 
-    input_path = os.path.join("temp_uploads", f"{file_uid}{ext}")
+    input_path = os.path.join(TEMP_UPLOAD_FOLDER, f"{file_uid}{ext}")
     chunks = split_video(input_path, TARGET_CHUNK_SIZE_BYTES)
 
     redis_conn.hset(f"video:{file_uid}", "chunks_count", len(chunks))
@@ -46,7 +48,6 @@ def process_video_task(file_uid: str, params: Dict[str, Any]):
         pct = 30 + int(40 * (i + 1) / len(chunks))
         _update_status(redis_conn, file_uid, progress=pct)
 
-    output_path = os.path.join("outputs", f"{file_uid}.mp4")
-    os.makedirs("outputs", exist_ok=True)
+    output_path = os.path.join(OUTPUT_DIR, f"{file_uid}.mp4")
     reassemble_video(processed_chunks, output_path)
     _update_status(redis_conn, file_uid, status="completed", progress=100)
