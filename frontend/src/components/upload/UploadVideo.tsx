@@ -6,73 +6,63 @@ import React, { useRef, useState } from "react";
 import { uploadVideo } from "../../lib/api";
 import type { ProcessingParams, UploadedVideo } from "../../types/api";
 
-const ResolutionOptions = [
-  { label: "UHD 4K (3840x2160)", value: "UHD_4K" },
-  { label: "QHD 2K (2560x1440)", value: "QHD_2K" },
-  { label: "FHD 1080p (1920x1080)", value: "FHD_1080" },
-  { label: "HD 720p (1280x720)", value: "HD_720" },
-  { label: "SD 480p (854x480)", value: "SD_480" },
-  { label: "Mobile 360p (640x360)", value: "MOBILE_360" },
+type CompressionPreset = "WEB_SMALL" | "STANDARD" | "HIGH_QUALITY";
+type SpeedPreset = "FAST" | "BALANCED" | "BETTER_COMPRESSION";
+
+const CompressionOptions: {
+  label: string;
+  value: CompressionPreset;
+  description: string;
+}[] = [
+  {
+    label: "Web / Small",
+    value: "WEB_SMALL",
+    description: "Smallest file size, best for sharing and uploads",
+  },
+  {
+    label: "Standard",
+    value: "STANDARD",
+    description: "Balanced quality and file size for most videos",
+  },
+  {
+    label: "High Quality",
+    value: "HIGH_QUALITY",
+    description: "Larger file, better visual quality",
+  },
 ];
 
-const VideoBitrateOptions = [
-  { label: "8M (Ultra)", value: "ULTRA" },
-  { label: "4M (High)", value: "HIGH" },
-  { label: "2M (Standard)", value: "STANDARD" },
-  { label: "1M (Low)", value: "LOW" },
-  { label: "500k (Mobile)", value: "MOBILE" },
-];
-
-const AudioBitrateOptions = [
-  { label: "192k (High)", value: "HIGH" },
-  { label: "128k (Standard)", value: "STANDARD" },
-  { label: "64k (Low)", value: "LOW" },
-];
-
-const AudioCodecOptions = [
-  { label: "AAC", value: "AAC" },
-  { label: "MP3", value: "MP3" },
-  { label: "Opus", value: "OPUS" },
-  { label: "Vorbis", value: "VORBIS" },
-  { label: "FLAC", value: "FLAC" },
-  { label: "PCM", value: "PCM_S16LE" },
-];
-
-const VideoCodecOptions = [
-  { label: "H.264 (libx264)", value: "H264" },
-  { label: "H.265 (libx265)", value: "H265" },
-  { label: "VP8", value: "VP8" },
-  { label: "VP9", value: "VP9" },
-  { label: "AV1", value: "AV1" },
-  { label: "MPEG-4 (mpeg4)", value: "MPEG4" },
-];
-
-const CRFValueOptions = [
-  { label: "18 (Very High Quality)", value: "VERY_HIGH" },
-  { label: "23 (High Quality)", value: "HIGH" },
-  { label: "28 (Medium Quality)", value: "MEDIUM" },
-  { label: "35 (Low Quality)", value: "LOW" },
-  { label: "40 (Very Low Quality)", value: "VERY_LOW" },
-];
-
-const PresetOptions = [
-  { label: "ultrafast", value: "ULTRAFAST" },
-  { label: "fast", value: "FAST" },
-  { label: "medium", value: "MEDIUM" },
-  { label: "slow", value: "SLOW" },
-  { label: "veryslow", value: "VERYSLOW" },
+const SpeedOptions: {
+  label: string;
+  value: SpeedPreset;
+  description: string;
+}[] = [
+  {
+    label: "Fast",
+    value: "FAST",
+    description: "Quickest processing time",
+  },
+  {
+    label: "Balanced",
+    value: "BALANCED",
+    description: "Good balance between speed and compression",
+  },
+  {
+    label: "Better Compression",
+    value: "BETTER_COMPRESSION",
+    description: "Slower processing, potentially better compression",
+  },
 ];
 
 const defaultParams: ProcessingParams = {
   chunkSize: 4,
   maxNodes: 5,
   resolution: "FHD_1080",
-  audioCodec: "MP3",
-  audioBitrate: "LOW",
+  audioCodec: "AAC",
+  audioBitrate: "STANDARD",
   videoCodec: "H264",
-  videoBitrate: "LOW",
+  videoBitrate: "STANDARD",
   crfValue: "MEDIUM",
-  preset: "ULTRAFAST",
+  preset: "MEDIUM",
 };
 
 type PendingUpload = {
@@ -107,23 +97,63 @@ function savePendingUpload(uploaded: UploadedVideo) {
   );
 }
 
+function buildParams(
+  compressionPreset: CompressionPreset,
+  speedPreset: SpeedPreset
+): ProcessingParams {
+  const compressionMap: Record<CompressionPreset, Partial<ProcessingParams>> = {
+    WEB_SMALL: {
+      resolution: "MOBILE_360",
+      videoBitrate: "MOBILE",
+      audioBitrate: "LOW",
+      crfValue: "LOW",
+      videoCodec: "H264",
+      audioCodec: "AAC",
+    },
+    STANDARD: {
+      resolution: "HD_720",
+      videoBitrate: "STANDARD",
+      audioBitrate: "STANDARD",
+      crfValue: "MEDIUM",
+      videoCodec: "H264",
+      audioCodec: "AAC",
+    },
+    HIGH_QUALITY: {
+      resolution: "FHD_1080",
+      videoBitrate: "HIGH",
+      audioBitrate: "HIGH",
+      crfValue: "HIGH",
+      videoCodec: "H264",
+      audioCodec: "AAC",
+    },
+  };
+
+  const speedMap: Record<SpeedPreset, ProcessingParams["preset"]> = {
+    FAST: "FAST",
+    BALANCED: "MEDIUM",
+    BETTER_COMPRESSION: "SLOW",
+  };
+
+  return {
+    ...defaultParams,
+    ...compressionMap[compressionPreset],
+    preset: speedMap[speedPreset],
+  };
+}
+
 export default function UploadVideo() {
   const router = useRouter();
 
   const [file, setFile] = useState<File | null>(null);
-  const [params, setParams] = useState<ProcessingParams>(defaultParams);
+  const [compressionPreset, setCompressionPreset] =
+    useState<CompressionPreset>("STANDARD");
+  const [speedPreset, setSpeedPreset] = useState<SpeedPreset>("BALANCED");
   const [isUploading, setIsUploading] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleParamChange = <K extends keyof ProcessingParams>(
-    field: K,
-    value: ProcessingParams[K]
-  ) => {
-    setParams((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+  const openFilePicker = () => {
+    inputRef.current?.click();
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,10 +175,6 @@ export default function UploadVideo() {
     e.preventDefault();
   };
 
-  const openFilePicker = () => {
-    inputRef.current?.click();
-  };
-
   const resetFile = () => {
     setFile(null);
     setIsUploading(false);
@@ -166,6 +192,7 @@ export default function UploadVideo() {
     try {
       setIsUploading(true);
 
+      const params = buildParams(compressionPreset, speedPreset);
       const result = await uploadVideo(file, params);
       const first = result.uploaded[0];
 
@@ -184,6 +211,14 @@ export default function UploadVideo() {
   const inputClasses =
     "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-100";
 
+  const selectedCompressionDescription =
+    CompressionOptions.find((option) => option.value === compressionPreset)
+      ?.description ?? "";
+
+  const selectedSpeedDescription =
+    SpeedOptions.find((option) => option.value === speedPreset)?.description ??
+    "";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50">
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
@@ -193,7 +228,7 @@ export default function UploadVideo() {
               ClipCrunch
             </h1>
             <p className="text-sm text-slate-500">
-              Upload, configure, and process your video files
+              Upload, compress, and manage your video files
             </p>
           </div>
 
@@ -206,7 +241,7 @@ export default function UploadVideo() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="space-y-6">
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
@@ -214,7 +249,7 @@ export default function UploadVideo() {
                 Upload Video
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                Drag and drop a file or choose one from your device
+                Drag and drop a video or choose one from your device
               </p>
             </div>
 
@@ -305,203 +340,59 @@ export default function UploadVideo() {
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-6 py-5">
                 <h2 className="text-lg font-semibold text-slate-900">
-                  Processing Parameters
+                  Compression Settings
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Choose your encoding and distribution settings
+                  Pick a simple preset instead of manual encoder settings
                 </p>
               </div>
 
               <div className="p-6">
-                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">
-                      Chunk Size (MB)
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      className={inputClasses}
-                      value={params.chunkSize}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "chunkSize",
-                          parseInt(e.target.value, 10) || 0
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Max Nodes
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      className={inputClasses}
-                      value={params.maxNodes}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "maxNodes",
-                          parseInt(e.target.value, 10) || 0
-                        )
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Target Resolution
+                      Compression Preset
                     </label>
                     <select
                       className={inputClasses}
-                      value={params.resolution}
+                      value={compressionPreset}
                       onChange={(e) =>
-                        handleParamChange(
-                          "resolution",
-                          e.target.value as ProcessingParams["resolution"]
+                        setCompressionPreset(
+                          e.target.value as CompressionPreset
                         )
                       }
                     >
-                      {ResolutionOptions.map((option) => (
+                      {CompressionOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
+                    <p className="text-sm text-slate-500">
+                      {selectedCompressionDescription}
+                    </p>
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">
-                      Video Bitrate
+                      Processing Speed
                     </label>
                     <select
                       className={inputClasses}
-                      value={params.videoBitrate}
+                      value={speedPreset}
                       onChange={(e) =>
-                        handleParamChange(
-                          "videoBitrate",
-                          e.target.value as ProcessingParams["videoBitrate"]
-                        )
+                        setSpeedPreset(e.target.value as SpeedPreset)
                       }
                     >
-                      {VideoBitrateOptions.map((option) => (
+                      {SpeedOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
                       ))}
                     </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Audio Bitrate
-                    </label>
-                    <select
-                      className={inputClasses}
-                      value={params.audioBitrate}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "audioBitrate",
-                          e.target.value as ProcessingParams["audioBitrate"]
-                        )
-                      }
-                    >
-                      {AudioBitrateOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Video Codec
-                    </label>
-                    <select
-                      className={inputClasses}
-                      value={params.videoCodec}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "videoCodec",
-                          e.target.value as ProcessingParams["videoCodec"]
-                        )
-                      }
-                    >
-                      {VideoCodecOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Audio Codec
-                    </label>
-                    <select
-                      className={inputClasses}
-                      value={params.audioCodec}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "audioCodec",
-                          e.target.value as ProcessingParams["audioCodec"]
-                        )
-                      }
-                    >
-                      {AudioCodecOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      CRF Value
-                    </label>
-                    <select
-                      className={inputClasses}
-                      value={params.crfValue}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "crfValue",
-                          e.target.value as ProcessingParams["crfValue"]
-                        )
-                      }
-                    >
-                      {CRFValueOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-slate-700">
-                      Preset
-                    </label>
-                    <select
-                      className={inputClasses}
-                      value={params.preset}
-                      onChange={(e) =>
-                        handleParamChange(
-                          "preset",
-                          e.target.value as ProcessingParams["preset"]
-                        )
-                      }
-                    >
-                      {PresetOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    <p className="text-sm text-slate-500">
+                      {selectedSpeedDescription}
+                    </p>
                   </div>
                 </div>
 
@@ -512,7 +403,8 @@ export default function UploadVideo() {
                         Start processing
                       </h3>
                       <p className="mt-1 text-sm text-slate-500">
-                        You will be redirected to the history page after upload starts.
+                        You will be redirected to the history page after upload
+                        starts.
                       </p>
                     </div>
 
