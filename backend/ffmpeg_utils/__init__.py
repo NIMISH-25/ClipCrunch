@@ -10,8 +10,10 @@ PROCESSED_DIR = os.path.join(DATA_DIR, "processed_chunks")
 OUTPUT_DIR = os.path.join(DATA_DIR, "outputs")
 TEMP_UPLOAD_DIR = config.TEMP_UPLOAD_FOLDER
 
+
 def ensure_dir(directory: str) -> None:
     os.makedirs(directory, exist_ok=True)
+
 
 def cleanup_files(paths: list[str]) -> None:
     for path in paths:
@@ -21,25 +23,24 @@ def cleanup_files(paths: list[str]) -> None:
         except FileNotFoundError:
             pass
 
-def _infer_base_name_from_path(path: str) -> str:
-    filename = os.path.splitext(os.path.basename(path))[0]
-    if "_chunk_" in filename:
-        return filename.split("_chunk_")[0]
-    return filename
-
 def cleanup_intermediate_files(base_name: str) -> None:
     for directory in (CHUNKS_DIR, PROCESSED_DIR):
         if not os.path.isdir(directory):
             continue
 
         for filename in os.listdir(directory):
-            if filename.startswith(base_name):
-                full_path = os.path.join(directory, filename)
-                if os.path.isfile(full_path):
-                    try:
-                        os.remove(full_path)
-                    except FileNotFoundError:
-                        pass
+            if not filename.startswith(base_name):
+                continue
+
+            full_path = os.path.join(directory, filename)
+            if not os.path.isfile(full_path):
+                continue
+
+            try:
+                os.remove(full_path)
+            except FileNotFoundError:
+                pass
+
 
 def cleanup_temp_upload(input_path: str | None) -> None:
     if not input_path:
@@ -51,6 +52,7 @@ def cleanup_temp_upload(input_path: str | None) -> None:
     except FileNotFoundError:
         pass
 
+
 def split_video(input_path: str, chunk_size_bytes: int) -> List[str]:
     ensure_dir(CHUNKS_DIR)
     base_name = os.path.splitext(os.path.basename(input_path))[0]
@@ -58,14 +60,22 @@ def split_video(input_path: str, chunk_size_bytes: int) -> List[str]:
 
     cmd = [
         "ffmpeg",
-        "-i", input_path,
-        "-c", "copy",
-        "-map", "0",
-        "-f", "segment",
-        "-segment_format", "mp4",
-        "-segment_list", segment_list_path,
-        "-segment_list_type", "flat",
-        "-fs", str(chunk_size_bytes),
+        "-i",
+        input_path,
+        "-c",
+        "copy",
+        "-map",
+        "0",
+        "-f",
+        "segment",
+        "-segment_format",
+        "mp4",
+        "-segment_list",
+        segment_list_path,
+        "-segment_list_type",
+        "flat",
+        "-fs",
+        str(chunk_size_bytes),
         os.path.join(CHUNKS_DIR, f"{base_name}_chunk_%03d.mp4"),
     ]
     subprocess.run(cmd, check=True)
@@ -79,7 +89,10 @@ def split_video(input_path: str, chunk_size_bytes: int) -> List[str]:
     cleanup_files([segment_list_path])
     return chunk_paths
 
-def process_chunk(input_path: str, output_path: str, resolution, video_bitrate, audio_bitrate):
+
+def process_chunk(
+    input_path: str, output_path: str, resolution, video_bitrate, audio_bitrate
+):
     from ffmpeg import input as ffmpeg_input
 
     ensure_dir(PROCESSED_DIR)
@@ -99,6 +112,7 @@ def process_chunk(input_path: str, output_path: str, resolution, video_bitrate, 
         .run()
     )
 
+
 def reassemble_video(
     chunk_paths: list[str],
     output_path: str,
@@ -113,7 +127,7 @@ def reassemble_video(
     ensure_dir(OUTPUT_DIR)
     ensure_dir(os.path.dirname(output_path))
 
-    base_name = _infer_base_name_from_path(chunk_paths[0])
+    base_name = os.path.splitext(os.path.basename(output_path))[0]
     concat_list = os.path.join(PROCESSED_DIR, f"{base_name}_concat_list.txt")
 
     with open(concat_list, "w") as f:

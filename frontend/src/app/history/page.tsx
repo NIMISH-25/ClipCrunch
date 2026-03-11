@@ -1,18 +1,62 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteVideo,
   getVideoDownloadUrl,
   getVideos,
+  listenToStatusEvents,
 } from "../../lib/api";
-import type { Video } from "../../types/api";
+import type { Status, Video } from "../../types/api";
+
+type PendingUpload = {
+  id: number | string;
+  file_uid: string;
+  filename?: string;
+  created_at?: string | null;
+};
+
+type LiveStatusMap = Record<
+  string,
+  {
+    file_uid: string;
+    status: string;
+    progress: number;
+  }
+>;
+
+const PENDING_UPLOADS_KEY = "clipcrunchPendingUploads";
+
+function readPendingUploads(): PendingUpload[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_UPLOADS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingUploads(items: PendingUpload[]) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(PENDING_UPLOADS_KEY, JSON.stringify(items));
+}
+
+function removePendingUpload(videoId: number | string) {
+  const current = readPendingUploads();
+  writePendingUploads(
+    current.filter((item) => String(item.id) !== String(videoId))
+  );
+}
 
 export default function HistoryPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<number | string | null>(null);
+  const [liveStatuses, setLiveStatuses] = useState<LiveStatusMap>({});
+  const eventSourcesRef = useRef<Record<string, EventSource>>({});
 
   useEffect(() => {
     getVideos()
@@ -20,6 +64,96 @@ export default function HistoryPage() {
       .catch(console.error)
       .finally(() => setIsLoading(false));
   }, []);
+
+  useEffect(() => {
+    const pendingUploads = readPendingUploads();
+
+    pendingUploads.forEach((pending) => {
+      const key = String(pending.id);
+
+      if (eventSourcesRef.current[key]) return;
+
+      setLiveStatuses((prev) => ({
+        ...prev,
+        [key]: {
+          file_uid: pending.file_uid,
+          status: "processing",
+          progress: 0,
+        },
+      }));
+
+      const es = listenToStatusEvents(
+        pending.file_uid,
+        (s: Status) => {
+          setLiveStatuses((prev) => ({
+            ...prev,
+            [key]: {
+              file_uid: pending.file_uid,
+              status: String(s.status || "processing"),
+              progress: Number(s.progress || 0),
+            },
+          }));
+        },
+        (s: Status) => {
+          const normalized = String(s.status || "").toLowerCase();
+
+          setLiveStatuses((prev) => ({
+            ...prev,
+            [key]: {
+              file_uid: pending.file_uid,
+              status:
+                normalized === "completed" ? "processed" : String(s.status || ""),
+              progress: Number(s.progress || 0),
+            },
+          }));
+
+          removePendingUpload(pending.id);
+          delete eventSourcesRef.current[key];
+
+          getVideos().then(setVideos).catch(console.error);
+        },
+        (err) => {
+          console.error("History SSE error:", err);
+        }
+      );
+
+      eventSourcesRef.current[key] = es;
+    });
+
+    return () => {
+      Object.values(eventSourcesRef.current).forEach((es) => es.close());
+      eventSourcesRef.current = {};
+    };
+  }, []);
+
+  const mergedVideos = useMemo(() => {
+    const pendingUploads = readPendingUploads();
+    const existingIds = new Set(videos.map((v) => String(v.id)));
+
+    const syntheticPendingRows: Video[] = pendingUploads
+      .filter((pending) => !existingIds.has(String(pending.id)))
+      .map((pending) => ({
+        id: pending.id as number,
+        filename: pending.filename || "Processing video",
+        status: "processing",
+        resolution: null,
+        created_at: pending.created_at ?? new Date().toISOString(),
+      } as Video));
+
+    const combined = [...syntheticPendingRows, ...videos];
+
+    return combined.map((video) => {
+      const live = liveStatuses[String(video.id)];
+      if (!live) return video;
+
+      const normalized = String(live.status || "").toLowerCase();
+
+      return {
+        ...video,
+        status: normalized === "completed" ? "processed" : live.status,
+      };
+    });
+  }, [videos, liveStatuses]);
 
   const handleDelete = async (videoId: number | string) => {
     const confirmed = window.confirm(
@@ -32,6 +166,12 @@ export default function HistoryPage() {
       setDeletingId(videoId);
       await deleteVideo(videoId);
       setVideos((prev) => prev.filter((video) => video.id !== videoId));
+      setLiveStatuses((prev) => {
+        const next = { ...prev };
+        delete next[String(videoId)];
+        return next;
+      });
+      removePendingUpload(videoId);
     } catch (error) {
       console.error("Failed to delete video:", error);
       alert("Failed to delete video. Check console for details.");
@@ -43,12 +183,15 @@ export default function HistoryPage() {
   const getStatusClasses = (status?: string) => {
     switch ((status || "").toLowerCase()) {
       case "completed":
+      case "processed":
       case "done":
       case "success":
         return "bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200";
       case "processing":
       case "uploaded":
       case "pending":
+      case "chunking":
+      case "chunked":
         return "bg-amber-100 text-amber-700 ring-1 ring-inset ring-amber-200";
       case "failed":
       case "error":
@@ -56,6 +199,16 @@ export default function HistoryPage() {
       default:
         return "bg-slate-100 text-slate-700 ring-1 ring-inset ring-slate-200";
     }
+  };
+
+  const isActionEnabled = (video: Video) => {
+    const effectiveStatus = String(video.status || "").toLowerCase();
+    return (
+      effectiveStatus === "processed" ||
+      effectiveStatus === "completed" ||
+      effectiveStatus === "done" ||
+      effectiveStatus === "success"
+    );
   };
 
   return (
@@ -87,7 +240,7 @@ export default function HistoryPage() {
               Video History
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              View past uploads, processing status, download files, or delete old entries
+              View past uploads, live processing status, download files, or delete old entries
             </p>
           </div>
 
@@ -96,7 +249,7 @@ export default function HistoryPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-6 py-12 text-center">
                 <p className="text-sm text-slate-500">Loading video history...</p>
               </div>
-            ) : videos.length === 0 ? (
+            ) : mergedVideos.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
                 <p className="text-base font-medium text-slate-700">
                   No videos found
@@ -132,9 +285,10 @@ export default function HistoryPage() {
                   </thead>
 
                   <tbody className="divide-y divide-slate-100 bg-white">
-                    {videos.map((v) => {
+                    {mergedVideos.map((v) => {
                       const downloadUrl = getVideoDownloadUrl(v);
                       const isDeleting = deletingId === v.id;
+                      const canAct = isActionEnabled(v);
 
                       return (
                         <tr key={v.id} className="transition hover:bg-slate-50/80">
@@ -163,25 +317,31 @@ export default function HistoryPage() {
                           </td>
 
                           <td className="px-4 py-4">
-                            {downloadUrl ? (
-                              <a
-                                href={downloadUrl}
-                                download
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-purple-700"
-                              >
-                                Download
-                              </a>
-                            ) : (
-                              <span className="text-slate-400">Unavailable</span>
-                            )}
+                            <a
+                              href={canAct && downloadUrl ? downloadUrl : undefined}
+                              download={canAct && downloadUrl ? true : undefined}
+                              target={canAct && downloadUrl ? "_blank" : undefined}
+                              rel={canAct && downloadUrl ? "noreferrer" : undefined}
+                              aria-disabled={!canAct || !downloadUrl}
+                              onClick={(e) => {
+                                if (!canAct || !downloadUrl) {
+                                  e.preventDefault();
+                                }
+                              }}
+                              className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold text-white transition ${
+                                canAct && downloadUrl
+                                  ? "bg-purple-600 hover:bg-purple-700"
+                                  : "cursor-not-allowed bg-purple-300"
+                              }`}
+                            >
+                              Download
+                            </a>
                           </td>
 
                           <td className="px-4 py-4">
                             <button
                               onClick={() => handleDelete(v.id)}
-                              disabled={isDeleting}
+                              disabled={isDeleting || !canAct}
                               className="inline-flex items-center rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
                             >
                               {isDeleting ? "Deleting..." : "Delete"}

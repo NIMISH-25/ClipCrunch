@@ -1,13 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  getVideoDownloadUrl,
-  listenToStatusEvents,
-  uploadVideo,
-} from "../../lib/api";
-import type { ProcessingParams, Status, UploadedVideo } from "../../types/api";
+import { useRouter } from "next/navigation";
+import React, { useRef, useState } from "react";
+import { uploadVideo } from "../../lib/api";
+import type { ProcessingParams, UploadedVideo } from "../../types/api";
 
 const ResolutionOptions = [
   { label: "UHD 4K (3840x2160)", value: "UHD_4K" },
@@ -78,21 +75,46 @@ const defaultParams: ProcessingParams = {
   preset: "ULTRAFAST",
 };
 
+type PendingUpload = {
+  id: number | string;
+  file_uid: string;
+  filename?: string;
+  created_at?: string | null;
+};
+
+const PENDING_UPLOADS_KEY = "clipcrunchPendingUploads";
+
+function savePendingUpload(uploaded: UploadedVideo) {
+  if (typeof window === "undefined") return;
+
+  const existingRaw = window.sessionStorage.getItem(PENDING_UPLOADS_KEY);
+  const existing: PendingUpload[] = existingRaw ? JSON.parse(existingRaw) : [];
+
+  const nextItem: PendingUpload = {
+    id: uploaded.id,
+    file_uid: uploaded.file_uid,
+    filename: uploaded.filename,
+    created_at: uploaded.created_at ?? new Date().toISOString(),
+  };
+
+  const deduped = existing.filter(
+    (item) => String(item.id) !== String(uploaded.id)
+  );
+
+  window.sessionStorage.setItem(
+    PENDING_UPLOADS_KEY,
+    JSON.stringify([nextItem, ...deduped])
+  );
+}
+
 export default function UploadVideo() {
+  const router = useRouter();
+
   const [file, setFile] = useState<File | null>(null);
   const [params, setParams] = useState<ProcessingParams>(defaultParams);
-  const [status, setStatus] = useState<Status | null>(null);
-  const [uploadedVideo, setUploadedVideo] = useState<UploadedVideo | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const esRef = useRef<EventSource | null>(null);
-
-  useEffect(() => {
-    return () => {
-      esRef.current?.close();
-    };
-  }, []);
 
   const handleParamChange = <K extends keyof ProcessingParams>(
     field: K,
@@ -104,17 +126,9 @@ export default function UploadVideo() {
     }));
   };
 
-  const clearUploadState = () => {
-    setStatus(null);
-    setUploadedVideo(null);
-    setIsUploading(false);
-    esRef.current?.close();
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      clearUploadState();
       setFile(selectedFile);
     }
   };
@@ -123,7 +137,6 @@ export default function UploadVideo() {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
-      clearUploadState();
       setFile(droppedFile);
     }
   };
@@ -137,8 +150,8 @@ export default function UploadVideo() {
   };
 
   const resetFile = () => {
-    clearUploadState();
     setFile(null);
+    setIsUploading(false);
     if (inputRef.current) {
       inputRef.current.value = "";
     }
@@ -155,39 +168,12 @@ export default function UploadVideo() {
 
       const result = await uploadVideo(file, params);
       const first = result.uploaded[0];
-      const fileUid: string = first.file_uid;
 
-      setUploadedVideo(first);
-      setStatus({
-        file_uid: fileUid,
-        status: "uploaded",
-        progress: 0,
-      });
+      if (first) {
+        savePendingUpload(first);
+      }
 
-      esRef.current?.close();
-
-      esRef.current = listenToStatusEvents(
-        fileUid,
-        (s) => {
-          setStatus(s);
-
-          const normalizedStatus = String(s.status || "").toLowerCase();
-          if (
-            normalizedStatus === "completed" ||
-            normalizedStatus === "failed" ||
-            normalizedStatus === "error"
-          ) {
-            setIsUploading(false);
-          }
-        },
-        () => {
-          setIsUploading(false);
-        },
-        (err) => {
-          console.error("SSE error:", err);
-          setIsUploading(false);
-        }
-      );
+      router.push("/history");
     } catch (error) {
       console.error("Upload failed:", error);
       alert("Upload failed. Check console for details.");
@@ -197,13 +183,6 @@ export default function UploadVideo() {
 
   const inputClasses =
     "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-100";
-
-  const isCompleted =
-    String(status?.status || "").toLowerCase() === "completed";
-
-  const downloadUrl = useMemo(() => {
-    return uploadedVideo ? getVideoDownloadUrl(uploadedVideo) : null;
-  }, [uploadedVideo]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50">
@@ -533,8 +512,7 @@ export default function UploadVideo() {
                         Start processing
                       </h3>
                       <p className="mt-1 text-sm text-slate-500">
-                        Your upload will begin immediately and status updates
-                        will appear below.
+                        You will be redirected to the history page after upload starts.
                       </p>
                     </div>
 
@@ -543,46 +521,9 @@ export default function UploadVideo() {
                       disabled={isUploading}
                       className="inline-flex items-center justify-center rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
                     >
-                      {isUploading ? "Processing..." : "Start Video Processing"}
+                      {isUploading ? "Starting..." : "Start Video Processing"}
                     </button>
                   </div>
-
-                  {status && (
-                    <div className="mt-5">
-                      <div className="mb-2 flex items-center justify-between text-sm">
-                        <span className="font-medium capitalize text-slate-700">
-                          Status: {status.status}
-                        </span>
-                        <span className="font-semibold text-purple-700">
-                          {status.progress}%
-                        </span>
-                      </div>
-
-                      <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className="h-full rounded-full bg-purple-600 transition-all duration-300"
-                          style={{ width: `${status.progress}%` }}
-                        />
-                      </div>
-
-                      {isCompleted && downloadUrl && (
-                        <div className="mt-4 flex flex-wrap items-center gap-3">
-                          <a
-                            href={downloadUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
-                          >
-                            Download Compressed Video
-                          </a>
-
-                          <span className="text-sm text-slate-500">
-                            Your processed file is ready.
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
             </section>
