@@ -20,6 +20,7 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config["SQLALCHEMY_DATABASE_URI"] = config.SQLALCHEMY_DATABASE_URI
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = config.SQLALCHEMY_TRACK_MODIFICATIONS
+    app.config["OUTPUTS_FOLDER"] = config.OUTPUTS_FOLDER
     app.config["UPLOAD_FOLDER"] = config.TEMP_UPLOAD_FOLDER
 
     CORS(app, resources={r"/*": {"origins": "*"}})

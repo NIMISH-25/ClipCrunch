@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import React, { useEffect, useRef, useState } from "react";
-import { uploadVideo, listenToStatusEvents } from "../../lib/api";
-import type { ProcessingParams, Status } from "../../types/api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  getVideoDownloadUrl,
+  listenToStatusEvents,
+  uploadVideo,
+} from "../../lib/api";
+import type { ProcessingParams, Status, UploadedVideo } from "../../types/api";
 
 const ResolutionOptions = [
   { label: "UHD 4K (3840x2160)", value: "UHD_4K" },
@@ -78,6 +82,7 @@ export default function UploadVideo() {
   const [file, setFile] = useState<File | null>(null);
   const [params, setParams] = useState<ProcessingParams>(defaultParams);
   const [status, setStatus] = useState<Status | null>(null);
+  const [uploadedVideo, setUploadedVideo] = useState<UploadedVideo | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -99,11 +104,18 @@ export default function UploadVideo() {
     }));
   };
 
+  const clearUploadState = () => {
+    setStatus(null);
+    setUploadedVideo(null);
+    setIsUploading(false);
+    esRef.current?.close();
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
+      clearUploadState();
       setFile(selectedFile);
-      setStatus(null);
     }
   };
 
@@ -111,8 +123,8 @@ export default function UploadVideo() {
     e.preventDefault();
     const droppedFile = e.dataTransfer.files?.[0];
     if (droppedFile) {
+      clearUploadState();
       setFile(droppedFile);
-      setStatus(null);
     }
   };
 
@@ -125,8 +137,11 @@ export default function UploadVideo() {
   };
 
   const resetFile = () => {
+    clearUploadState();
     setFile(null);
-    setStatus(null);
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
   };
 
   const handleUpload = async () => {
@@ -137,21 +152,41 @@ export default function UploadVideo() {
 
     try {
       setIsUploading(true);
-      const result = await uploadVideo(file, params);
 
+      const result = await uploadVideo(file, params);
       const first = result.uploaded[0];
       const fileUid: string = first.file_uid;
 
+      setUploadedVideo(first);
       setStatus({
         file_uid: fileUid,
         status: "uploaded",
         progress: 0,
       });
 
+      esRef.current?.close();
+
       esRef.current = listenToStatusEvents(
         fileUid,
-        (s) => setStatus(s),
-        () => setIsUploading(false)
+        (s) => {
+          setStatus(s);
+
+          const normalizedStatus = String(s.status || "").toLowerCase();
+          if (
+            normalizedStatus === "completed" ||
+            normalizedStatus === "failed" ||
+            normalizedStatus === "error"
+          ) {
+            setIsUploading(false);
+          }
+        },
+        () => {
+          setIsUploading(false);
+        },
+        (err) => {
+          console.error("SSE error:", err);
+          setIsUploading(false);
+        }
       );
     } catch (error) {
       console.error("Upload failed:", error);
@@ -163,9 +198,15 @@ export default function UploadVideo() {
   const inputClasses =
     "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-100";
 
+  const isCompleted =
+    String(status?.status || "").toLowerCase() === "completed";
+
+  const downloadUrl = useMemo(() => {
+    return uploadedVideo ? getVideoDownloadUrl(uploadedVideo) : null;
+  }, [uploadedVideo]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50">
-      {/* Header */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div>
@@ -188,7 +229,6 @@ export default function UploadVideo() {
 
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="space-y-6">
-          {/* Upload card */}
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-6 py-5">
               <h2 className="text-lg font-semibold text-slate-900">
@@ -241,7 +281,7 @@ export default function UploadVideo() {
               ) : (
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
                   <div className="flex flex-col gap-4 sm:flex-row">
-                    <div className="flex w-full max-w-xs items-center justify-center rounded-xl border border-slate-200 bg-slate-900 aspect-video">
+                    <div className="aspect-video flex w-full max-w-xs items-center justify-center rounded-xl border border-slate-200 bg-slate-900">
                       <span className="text-sm font-medium text-slate-300">
                         Video Selected
                       </span>
@@ -282,7 +322,6 @@ export default function UploadVideo() {
             </div>
           </section>
 
-          {/* Parameters */}
           {file && (
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-6 py-5">
@@ -525,6 +564,23 @@ export default function UploadVideo() {
                           style={{ width: `${status.progress}%` }}
                         />
                       </div>
+
+                      {isCompleted && downloadUrl && (
+                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                          <a
+                            href={downloadUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+                          >
+                            Download Compressed Video
+                          </a>
+
+                          <span className="text-sm text-slate-500">
+                            Your processed file is ready.
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
-import { getVideos } from "../../lib/api";
+import {
+  deleteVideo,
+  getVideoDownloadUrl,
+  getVideos,
+} from "../../lib/api";
 import type { Video } from "../../types/api";
 
 export default function HistoryPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<number | string | null>(null);
 
   useEffect(() => {
     getVideos()
@@ -16,15 +21,23 @@ export default function HistoryPage() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const getDownloadUrl = (video: Video) => {
-    const v = video as Video & {
-      download_url?: string;
-      output_url?: string;
-      file_url?: string;
-      url?: string;
-    };
+  const handleDelete = async (videoId: number | string) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this video?"
+    );
 
-    return v.download_url || v.output_url || v.file_url || v.url || null;
+    if (!confirmed) return;
+
+    try {
+      setDeletingId(videoId);
+      await deleteVideo(videoId);
+      setVideos((prev) => prev.filter((video) => video.id !== videoId));
+    } catch (error) {
+      console.error("Failed to delete video:", error);
+      alert("Failed to delete video. Check console for details.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const getStatusClasses = (status?: string) => {
@@ -74,7 +87,7 @@ export default function HistoryPage() {
               Video History
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              View past uploads, processing status, and download completed files
+              View past uploads, processing status, download files, or delete old entries
             </p>
           </div>
 
@@ -112,18 +125,19 @@ export default function HistoryPage() {
                       <th className="px-4 py-3 text-left font-semibold text-slate-700">
                         Download
                       </th>
+                      <th className="px-4 py-3 text-left font-semibold text-slate-700">
+                        Delete
+                      </th>
                     </tr>
                   </thead>
 
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {videos.map((v) => {
-                      const downloadUrl = getDownloadUrl(v);
+                      const downloadUrl = getVideoDownloadUrl(v);
+                      const isDeleting = deletingId === v.id;
 
                       return (
-                        <tr
-                          key={v.id}
-                          className="transition hover:bg-slate-50/80"
-                        >
+                        <tr key={v.id} className="transition hover:bg-slate-50/80">
                           <td className="px-4 py-4 font-medium text-slate-800">
                             {v.filename}
                           </td>
@@ -162,6 +176,16 @@ export default function HistoryPage() {
                             ) : (
                               <span className="text-slate-400">Unavailable</span>
                             )}
+                          </td>
+
+                          <td className="px-4 py-4">
+                            <button
+                              onClick={() => handleDelete(v.id)}
+                              disabled={isDeleting}
+                              className="inline-flex items-center rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-rose-300"
+                            >
+                              {isDeleting ? "Deleting..." : "Delete"}
+                            </button>
                           </td>
                         </tr>
                       );

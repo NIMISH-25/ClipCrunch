@@ -4,7 +4,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 DATA_DIR = os.getenv("CLIPCRUNCH_DATA_DIR", os.path.join(os.path.dirname(BASE_DIR), "data"))
 TEMP_UPLOAD_FOLDER = os.path.join(DATA_DIR, "temp_uploads")
+OUTPUTS_FOLDER = os.path.join(DATA_DIR, "outputs")
 os.makedirs(TEMP_UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUTS_FOLDER, exist_ok=True)
 
 SQLALCHEMY_DATABASE_URI = "sqlite:///" + os.path.join(DATA_DIR, "videos.db")
 SQLALCHEMY_TRACK_MODIFICATIONS = False

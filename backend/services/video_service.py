@@ -1,3 +1,4 @@
+import glob
 import os
 import uuid
 from typing import Any, Dict, List
@@ -8,7 +9,6 @@ from werkzeug.utils import secure_filename
 from ..app import db
 from ..models import Video, ResolutionPreset, BitratePreset, AudioBitratePreset, CRFPreset, Preset
 from ..queues import get_redis_connection, get_queues
-from .. import config
 
 def _parse_params(raw: str | None) -> Dict[str, Any]:
     import json
@@ -27,6 +27,46 @@ def _enum_from_name(enum_cls, name: str | None):
     except KeyError:
         return None
 
+
+def _get_temp_upload_folder() -> str:
+    folder = (
+        current_app.config.get("TEMP_UPLOAD_FOLDER")
+        or current_app.config.get("UPLOAD_FOLDER")
+    )
+    if not folder:
+        raise RuntimeError("TEMP_UPLOAD_FOLDER is not configured")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _get_outputs_folder() -> str:
+    folder = current_app.config.get("OUTPUTS_FOLDER")
+    if not folder:
+        raise RuntimeError("OUTPUTS_FOLDER is not configured")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def _get_video_output_path(video: Video) -> str | None:
+    if not video.stored_filename:
+        return None
+
+    outputs_folder = _get_outputs_folder()
+    base_name = os.path.splitext(video.stored_filename)[0]
+
+    candidates = sorted(
+        glob.glob(os.path.join(outputs_folder, f"{base_name}*")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+
+    return None
+
+
 def create_videos_from_request(request: Request) -> List[dict]:
     if "video" not in request.files:
         raise ValueError("No video file part in the request")
@@ -43,7 +83,6 @@ def create_videos_from_request(request: Request) -> List[dict]:
     audio_codec = params.get("audioCodec")
 
     upload_folder = current_app.config["UPLOAD_FOLDER"]
-    os.makedirs(upload_folder, exist_ok=True)
 
     redis_conn = get_redis_connection()
     created: list[dict] = []
@@ -92,6 +131,7 @@ def create_videos_from_request(request: Request) -> List[dict]:
                 "id": video.id,
                 "file_uid": file_uid,
                 **video.to_dict(),
+                "download_url": None,
             }
         )
         enqueue_processing_jobs(file_uid, ext, params)
@@ -104,8 +144,56 @@ def enqueue_processing_jobs(file_uid: str, ext: str, params: dict):
     from ..tasks.video_tasks import chunk_video_task, process_video_task
 
     queues["chunking"].enqueue(chunk_video_task, file_uid, ext, params)
-    queues["processing"].enqueue(process_video_task, file_uid, params)
+    queues["processing"].enqueue(process_video_task, file_uid, ext, params)
 
 def list_videos() -> list[dict]:
-    videos = Video.query.all()
-    return [v.to_dict() for v in videos]
+    videos = Video.query.order_by(Video.created_at.desc()).all()
+
+    result = []
+    for v in videos:
+        output_path = _get_video_output_path(v)
+
+        result.append(
+            {
+                **v.to_dict(),
+                "download_url": f"/api/videos/{v.id}/download" if output_path else None,
+            }
+        )
+
+    return result
+
+def get_video_download_path(video_id: int) -> tuple[str, str]:
+    video = Video.query.get(video_id)
+    if not video:
+        raise ValueError("Video not found")
+
+    output_path = _get_video_output_path(video)
+    if not output_path:
+        raise FileNotFoundError("Compressed video is not available yet")
+
+    download_name = os.path.basename(output_path)
+    return output_path, download_name
+
+def delete_video(video_id: int) -> bool:
+    video = Video.query.get(video_id)
+    if not video:
+        return False
+
+    temp_folder = _get_temp_upload_folder()
+    outputs_folder = _get_outputs_folder()
+
+    if video.stored_filename:
+        original_path = os.path.join(temp_folder, video.stored_filename)
+        if os.path.exists(original_path) and os.path.isfile(original_path):
+            os.remove(original_path)
+
+        base_name = os.path.splitext(video.stored_filename)[0]
+
+        output_candidates = glob.glob(os.path.join(outputs_folder, f"{base_name}*"))
+        for path in output_candidates:
+            if os.path.isfile(path):
+                os.remove(path)
+
+    db.session.delete(video)
+    db.session.commit()
+    return True
