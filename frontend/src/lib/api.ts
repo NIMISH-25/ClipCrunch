@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import type { ProcessingParams, Video, Status } from "../types/api";
+import type { ProcessingParams, Video, UploadedVideo, Status } from "../types/api";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5000/api",
@@ -10,7 +10,7 @@ const api = axios.create({
 export async function uploadVideo(
   file: File,
   params: ProcessingParams
-): Promise<{ uploaded: Video[] }> {
+): Promise<{ uploaded: UploadedVideo[] }> {
   const formData = new FormData();
   formData.append("video", file);
   formData.append("params", JSON.stringify(params));

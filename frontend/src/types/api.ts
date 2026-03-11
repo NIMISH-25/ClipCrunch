@@ -28,6 +28,10 @@ export interface Video {
   updated_at: string | null;
 }
 
+export interface UploadedVideo extends Video {
+  file_uid: string;
+}
+
 export interface Status {
   file_uid: string;
   status: string;
