@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 import { uploadVideo, listenToStatusEvents } from "../../lib/api";
 import type { ProcessingParams, Status } from "../../types/api";
@@ -159,285 +160,379 @@ export default function UploadVideo() {
     }
   };
 
+  const inputClasses =
+    "h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-700 shadow-sm transition focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-100";
+
   return (
-    <div className="flex flex-col space-y-4 p-4 bg-stone-100 min-h-screen">
-      <div className="grid grid-cols-6 gap-4">
-        {/* Upload card */}
-        <div className="bg-white col-span-6 border p-6 space-y-4">
-          <p className="text-lg font-semibold text-gray-700">Upload Video</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-purple-50">
+      {/* Header */}
+      <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              ClipCrunch
+            </h1>
+            <p className="text-sm text-slate-500">
+              Upload, configure, and process your video files
+            </p>
+          </div>
 
-          {!file ? (
-            // Drop Zone
-            <div
-              className="border-2 border-dashed p-6 flex items-center justify-center cursor-pointer hover:bg-purple-100 transition rounded-md"
-              onClick={openFilePicker}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-            >
-              <div className="flex flex-col items-center justify-center">
-                <svg
-                  className="w-16 h-16 text-purple-400 mb-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16V4m0 0l-4 4m4-4l4 4M17 8v8m0 0l4-4m-4 4l-4-4"
-                  />
-                </svg>
-                <p className="text-purple-600 font-medium">
-                  Drag &amp; Drop your video here
-                </p>
-                <p className="text-gray-400 text-sm mt-2">or click to select</p>
-                <input
-                  type="file"
-                  accept="video/*"
-                  ref={inputRef}
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-              </div>
-            </div>
-          ) : (
-            // File Info View
-            <div className="space-y-4">
-              <div className="flex space-x-4">
-                <div className="aspect-[16/9] border w-30 bg-black" />
-                <div>
-                  <div className="space-y-2 text-sm text-gray-600">
-                    <p>
-                      <span className="font-medium">Filename:</span> {file.name}
-                    </p>
-                    <p>
-                      <span className="font-medium">Size:</span>{" "}
-                      {(file.size / (1024 * 1024)).toFixed(2)} MB
-                    </p>
-                    <p>
-                      <span className="font-medium">Type:</span> {file.type}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                onClick={resetFile}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-4 p-2 transition text-xs font-semibold"
-              >
-                Reupload Video
-              </button>
-            </div>
-          )}
+          <Link
+            href="/history"
+            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:border-purple-300 hover:text-purple-700 hover:shadow"
+          >
+            History
+          </Link>
         </div>
+      </header>
 
-        {/* Parameters + Start button */}
-        {file && (
-          <div className="bg-white col-span-6 border p-4 space-y-4">
-            <div>
-              <p className="text-lg font-semibold text-gray-700">
-                Processing Parameters
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          {/* Upload card */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <h2 className="text-lg font-semibold text-slate-900">
+                Upload Video
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Drag and drop a file or choose one from your device
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Chunk Size */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Chunk Size (MB)
-                </label>
-                <input
-                  type="number"
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.chunkSize}
-                  onChange={(e) =>
-                    handleParamChange("chunkSize", parseInt(e.target.value, 10))
-                  }
-                />
-              </div>
-
-              {/* Max Nodes */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Max Nodes
-                </label>
-                <input
-                  type="number"
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.maxNodes}
-                  onChange={(e) =>
-                    handleParamChange("maxNodes", parseInt(e.target.value, 10))
-                  }
-                />
-              </div>
-
-              {/* Target Resolution */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Target Resolution
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.resolution}
-                  onChange={(e) =>
-                    handleParamChange("resolution", e.target.value)
-                  }
+            <div className="p-6">
+              {!file ? (
+                <div
+                  className="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-purple-300 bg-gradient-to-b from-purple-50 to-white px-6 py-14 text-center transition hover:border-purple-400 hover:bg-purple-50"
+                  onClick={openFilePicker}
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
                 >
-                  {ResolutionOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Video Bitrate */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Video Bitrate
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.videoBitrate}
-                  onChange={(e) =>
-                    handleParamChange("videoBitrate", e.target.value)
-                  }
-                >
-                  {VideoBitrateOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Audio Bitrate */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Audio Bitrate
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.audioBitrate}
-                  onChange={(e) =>
-                    handleParamChange("audioBitrate", e.target.value)
-                  }
-                >
-                  {AudioBitrateOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Video Codec */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Video Codec
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.videoCodec}
-                  onChange={(e) =>
-                    handleParamChange("videoCodec", e.target.value)
-                  }
-                >
-                  {VideoCodecOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Audio Codec */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Audio Codec
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.audioCodec}
-                  onChange={(e) =>
-                    handleParamChange("audioCodec", e.target.value)
-                  }
-                >
-                  {AudioCodecOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* CRF Value */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  CRF Value
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.crfValue}
-                  onChange={(e) =>
-                    handleParamChange("crfValue", e.target.value)
-                  }
-                >
-                  {CRFValueOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Preset */}
-              <div className="flex flex-col space-y-1">
-                <label className="text-sm text-gray-600 font-medium">
-                  Preset
-                </label>
-                <select
-                  className="border p-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                  value={params.preset}
-                  onChange={(e) =>
-                    handleParamChange("preset", e.target.value)
-                  }
-                >
-                  {PresetOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Start Processing Button + Progress */}
-              <div className="flex flex-col justify-end">
-                <button
-                  onClick={handleUpload}
-                  disabled={isUploading}
-                  className="mt-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white px-4 py-2 rounded-md text-sm font-semibold"
-                >
-                  {isUploading ? "Processing..." : "Start Video Processing"}
-                </button>
-
-                {status && (
-                  <div className="mt-4 space-y-1">
-                    <p className="text-sm">Status: {status.status}</p>
-                    <div className="w-full bg-gray-200 h-2 rounded">
-                      <div
-                        className="bg-purple-600 h-2 rounded"
-                        style={{ width: `${status.progress}%` }}
+                  <div className="mb-4 rounded-full bg-purple-100 p-4 text-purple-600 transition group-hover:scale-105">
+                    <svg
+                      className="h-10 w-10"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M7 16V4m0 0l-4 4m4-4l4 4M17 8v8m0 0l4-4m-4 4l-4-4"
                       />
+                    </svg>
+                  </div>
+
+                  <p className="text-base font-semibold text-slate-800">
+                    Drag &amp; drop your video here
+                  </p>
+                  <p className="mt-2 text-sm text-slate-500">
+                    or click to browse files
+                  </p>
+
+                  <input
+                    type="file"
+                    accept="video/*"
+                    ref={inputRef}
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row">
+                    <div className="flex w-full max-w-xs items-center justify-center rounded-xl border border-slate-200 bg-slate-900 aspect-video">
+                      <span className="text-sm font-medium text-slate-300">
+                        Video Selected
+                      </span>
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                        <p>
+                          <span className="font-semibold text-slate-800">
+                            Filename:
+                          </span>{" "}
+                          {file.name}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-slate-800">
+                            Size:
+                          </span>{" "}
+                          {(file.size / (1024 * 1024)).toFixed(2)} MB
+                        </p>
+                        <p>
+                          <span className="font-semibold text-slate-800">
+                            Type:
+                          </span>{" "}
+                          {file.type || "Unknown"}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={resetFile}
+                        className="mt-5 inline-flex items-center rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-700"
+                      >
+                        Reupload Video
+                      </button>
                     </div>
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </div>
+          </section>
+
+          {/* Parameters */}
+          {file && (
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-6 py-5">
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Processing Parameters
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Choose your encoding and distribution settings
+                </p>
+              </div>
+
+              <div className="p-6">
+                <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Chunk Size (MB)
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputClasses}
+                      value={params.chunkSize}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "chunkSize",
+                          parseInt(e.target.value, 10) || 0
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Max Nodes
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputClasses}
+                      value={params.maxNodes}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "maxNodes",
+                          parseInt(e.target.value, 10) || 0
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Target Resolution
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.resolution}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "resolution",
+                          e.target.value as ProcessingParams["resolution"]
+                        )
+                      }
+                    >
+                      {ResolutionOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Video Bitrate
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.videoBitrate}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "videoBitrate",
+                          e.target.value as ProcessingParams["videoBitrate"]
+                        )
+                      }
+                    >
+                      {VideoBitrateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Audio Bitrate
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.audioBitrate}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "audioBitrate",
+                          e.target.value as ProcessingParams["audioBitrate"]
+                        )
+                      }
+                    >
+                      {AudioBitrateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Video Codec
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.videoCodec}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "videoCodec",
+                          e.target.value as ProcessingParams["videoCodec"]
+                        )
+                      }
+                    >
+                      {VideoCodecOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Audio Codec
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.audioCodec}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "audioCodec",
+                          e.target.value as ProcessingParams["audioCodec"]
+                        )
+                      }
+                    >
+                      {AudioCodecOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      CRF Value
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.crfValue}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "crfValue",
+                          e.target.value as ProcessingParams["crfValue"]
+                        )
+                      }
+                    >
+                      {CRFValueOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Preset
+                    </label>
+                    <select
+                      className={inputClasses}
+                      value={params.preset}
+                      onChange={(e) =>
+                        handleParamChange(
+                          "preset",
+                          e.target.value as ProcessingParams["preset"]
+                        )
+                      }
+                    >
+                      {PresetOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Start processing
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Your upload will begin immediately and status updates
+                        will appear below.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleUpload}
+                      disabled={isUploading}
+                      className="inline-flex items-center justify-center rounded-xl bg-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-300"
+                    >
+                      {isUploading ? "Processing..." : "Start Video Processing"}
+                    </button>
+                  </div>
+
+                  {status && (
+                    <div className="mt-5">
+                      <div className="mb-2 flex items-center justify-between text-sm">
+                        <span className="font-medium capitalize text-slate-700">
+                          Status: {status.status}
+                        </span>
+                        <span className="font-semibold text-purple-700">
+                          {status.progress}%
+                        </span>
+                      </div>
+
+                      <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-purple-600 transition-all duration-300"
+                          style={{ width: `${status.progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
